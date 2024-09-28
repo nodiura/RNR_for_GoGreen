@@ -1,6 +1,6 @@
 # Provider Configuration
 provider "aws" {
-  region = "us-west-1"  # Specify the AWS region
+  region = "us-west-1" 
 }
 
 # VPC Configuration
@@ -23,18 +23,16 @@ resource "aws_subnet" "public" {
     Name = "GoGreenPublicSubnet"
   }
 }
-
 resource "aws_subnet" "public_b" {
   vpc_id                  = aws_vpc.main.id
-  cidr_block              = "10.0.1.0/24"
+  cidr_block              = "10.0.2.0/24"  
   availability_zone       = "us-west-1b"  # Second public subnet
-
   tags = {
     Name = "GoGreenPublicSubnetB"
   }
 }
 
-resource "aws_subnet" "app_private" {
+resource "aws_subnet" "app_private-a" {
   vpc_id            = aws_vpc.main.id
   cidr_block        = "10.0.2.0/24"
   availability_zone = "us-west-1a"
@@ -171,13 +169,20 @@ resource "aws_security_group" "alb_sg" {
 resource "aws_security_group" "app_sg" {
   vpc_id = aws_vpc.main.id
 
-  ingress {
-    from_port   = 80
-    to_port     = 80
-    protocol    = "tcp"
-    security_groups = [aws_security_group.alb_sg.id]
-  }
-
+     ingress {
+     from_port   = 80
+     to_port     = 80
+     protocol    = "tcp"
+     cidr_blocks = ["0.0.0.0/0"] # Or more restricted
+   }
+   
+   ingress {
+     from_port   = 443
+     to_port     = 443
+     protocol    = "tcp"
+     cidr_blocks = ["0.0.0.0/0"] # Or more restricted
+   }
+   
   egress {
     from_port   = 0
     to_port     = 0
@@ -331,10 +336,10 @@ resource "aws_cloudwatch_metric_alarm" "http_error_alarm" {
   alarm_description     = "Alarm when there are more than 100 HTTP 400 errors in a minute"
   actions_enabled        = true
 
-  dimensions = {
-    LoadBalancer = aws_lb.app_lb.dns_name
-  }
-
+   dimensions = {
+     LoadBalancer = aws_lb.app_lb.arn
+   }
+   
   alarm_actions = ["arn:aws:sns:us-west-1:123456789012:your_sns_topic"]  # Replace with your SNS topic ARN
 }
 
