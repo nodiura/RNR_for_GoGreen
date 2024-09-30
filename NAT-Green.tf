@@ -25,7 +25,7 @@ resource "aws_subnet" "public" {
 resource "aws_subnet" "public_b" {
   vpc_id                  = aws_vpc.main.id
   cidr_block              = "10.0.2.0/24"
-  availability_zone       = "us-west-1b"  
+  availability_zone       = "us-west-1b"
   tags = {
     Name = "GoGreenPublicSubnetB"
   }
@@ -473,6 +473,50 @@ resource "aws_route53_record" "alb" {
   }
 }
 
+# S3 Bucket Configuration
+resource "aws_s3_bucket" "static_assets" {
+  bucket = "gogreen-static-assets"  # Replace with a unique bucket name
+  tags = {
+    Name = "GoGreenStaticAssets"
+  }
+}
+
+resource "aws_s3_bucket_acl" "static_assets_acl" {
+  bucket = aws_s3_bucket.static_assets.id
+  acl    = "public-read"  # Change as needed for your use case
+}
+
+# S3 Bucket for Glacier
+resource "aws_s3_bucket" "archival_bucket" {
+  bucket = "gogreen-archive-bucket"  # Replace with a unique bucket name
+  tags = {
+    Name = "GoGreenArchiveBucket"
+  }
+}
+
+resource "aws_s3_bucket_acl" "archival_bucket_acl" {
+  bucket = aws_s3_bucket.archival_bucket.id
+  acl    = "private"
+}
+
+resource "aws_s3_bucket_lifecycle_configuration" "lifecycle" {
+  bucket = aws_s3_bucket.archival_bucket.id
+
+  rule {
+    id     = "MoveToGlacier"
+    status = "Enabled"
+
+    transition {
+      days          = 30  # Transition to Glacier after 30 days
+      storage_class = "GLACIER"
+    }
+
+    expiration {
+      days = 365  # Expire objects after 365 days
+    }
+  }
+}
+
 # Outputs
 output "vpc_id" {
   value = aws_vpc.main.id
@@ -510,6 +554,10 @@ output "route53_zone_id" {
   value = aws_route53_zone.main.id
 }
 
-output "route53_record_name" {
-  value = aws_route53_record.alb.fqdn
+output "static_assets_bucket_name" {
+  value = aws_s3_bucket.static_assets.bucket
+}
+
+output "archival_bucket_name" {
+  value = aws_s3_bucket.archival_bucket.bucket
 }
