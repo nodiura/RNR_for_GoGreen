@@ -419,11 +419,11 @@ resource "aws_db_subnet_group" "default" {
   }
 }
 
-# Database Tier Configuration (RDS)
+# Database Tier Configuration
 resource "aws_db_instance" "default" {
   identifier                = "go-green-db"
   engine                    = "mysql"
-  instance_class            = "db.t3.micro"
+  instance_class            = "db.m5.large"
   allocated_storage          = 100
   storage_type              = "gp2"
   username                  = "admin" 
@@ -457,6 +457,22 @@ resource "aws_cloudwatch_metric_alarm" "http_error_alarm" {
   alarm_actions = ["arn:aws:sns:us-west-1:123456789012:your_sns_topic"]
 }
 
+# Route 53 Configuration
+resource "aws_route53_zone" "main" {
+  name = "yourdomain.com"  # Replace with your domain
+}
+
+resource "aws_route53_record" "alb" {
+  zone_id = aws_route53_zone.main.id
+  name     = "www.yourdomain.com"  # Replace with your subdomain
+  type     = "A"
+  alias {
+    name                   = aws_lb.app_lb.dns_name
+    zone_id                = aws_lb.app_lb.zone_id
+    evaluate_target_health = true
+  }
+}
+
 # Outputs
 output "vpc_id" {
   value = aws_vpc.main.id
@@ -488,4 +504,12 @@ output "alb_dns_name" {
 
 output "bastion_host_id" {
   value = aws_instance.bastion.id
+}
+
+output "route53_zone_id" {
+  value = aws_route53_zone.main.id
+}
+
+output "route53_record_name" {
+  value = aws_route53_record.alb.fqdn
 }
