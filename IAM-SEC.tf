@@ -1,4 +1,5 @@
 
+
 # Define IAM Groups
 resource "aws_iam_group" "db_admin" {
   name = "DBAdmin"
@@ -39,21 +40,21 @@ resource "aws_iam_user" "sysadmin" {
 
 # Attach Users to Groups
 resource "aws_iam_user_group_membership" "db_admin_membership" {
+  user    = aws_iam_user.db_admin[each.key].name
+  groups  = [aws_iam_group.db_admin.name]
   for_each = toset(local.db_admin_users)
-  user     = aws_iam_user.db_admin[each.value].name
-  group    = aws_iam_group.db_admin.name
 }
 
 resource "aws_iam_user_group_membership" "monitor_membership" {
+  user    = aws_iam_user.monitor[each.key].name
+  groups  = [aws_iam_group.monitor.name]
   for_each = toset(local.monitor_users)
-  user     = aws_iam_user.monitor[each.value].name
-  group    = aws_iam_group.monitor.name
 }
 
 resource "aws_iam_user_group_membership" "sysadmin_membership" {
+  user    = aws_iam_user.sysadmin[each.key].name
+  groups  = [aws_iam_group.sysadmin.name]
   for_each = toset(local.sysadmin_users)
-  user     = aws_iam_user.sysadmin[each.value].name
-  group    = aws_iam_group.sysadmin.name
 }
 
 # IAM Role for EC2 Instances
@@ -206,13 +207,13 @@ output "s3_kms_key_id" {
 
 # Outputs for Users and Groups
 output "db_admin_users" {
-  value = aws_iam_user.db_admin[*].name
+  value = [for user in aws_iam_user.db_admin : user.name]
 }
 
 output "monitor_users" {
-  value = aws_iam_user.monitor[*].name
+  value = [for user in aws_iam_user.monitor : user.name]
 }
 
 output "sysadmin_users" {
-  value = aws_iam_user.sysadmin[*].name
+  value = [for user in aws_iam_user.sysadmin : user.name]
 }

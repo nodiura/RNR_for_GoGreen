@@ -131,99 +131,6 @@ resource "aws_route_table_association" "db_private_association" {
   route_table_id = aws_route_table.private.id
 }
 
-# Security Groups Configuration
-# Bastion Host Security Group
-resource "aws_security_group" "bastion_sg" {
-  vpc_id = aws_vpc.main.id
-  ingress {
-    from_port   = 22
-    to_port     = 22
-    protocol    = "tcp"
-    cidr_blocks = ["203.0.113.45/32"]
-  }
-  egress {
-    from_port   = 0
-    to_port     = 0
-    protocol    = "-1"
-    cidr_blocks = ["0.0.0.0/0"]
-  }
-  tags = {
-    Name = "GoGreenBastionSecurityGroup"
-  }
-}
-
-# Public Instances Security Group
-resource "aws_security_group" "alb_sg" {
-  vpc_id = aws_vpc.main.id
-  ingress {
-    from_port   = 80
-    to_port     = 80
-    protocol    = "tcp"
-    cidr_blocks = ["0.0.0.0/0"]
-  }
-  ingress {
-    from_port   = 443
-    to_port     = 443
-    protocol    = "tcp"
-    cidr_blocks = ["0.0.0.0/0"]
-  }
-  egress {
-    from_port   = 0
-    to_port     = 0
-    protocol    = "-1"
-    cidr_blocks = ["0.0.0.0/0"]
-  }
-  tags = {
-    Name = "GoGreenALBSecurityGroup"
-  }
-}
-
-# Application Security Group
-resource "aws_security_group" "app_sg" {
-  vpc_id = aws_vpc.main.id
-  ingress {
-    from_port   = 80
-    to_port     = 80
-    protocol    = "tcp"
-    security_groups = [aws_security_group.alb_sg.id]  # Allow traffic from web layer
-  }
-  ingress {
-    from_port   = 3306
-    to_port     = 3306
-    protocol    = "tcp"
-    cidr_blocks = ["10.0.0.0/8"]  # Allow traffic from the private subnet range
-  }
-  egress {
-    from_port   = 0
-    to_port     = 0
-    protocol    = "-1"
-    cidr_blocks = ["0.0.0.0/0"]
-  }
-  tags = {
-    Name = "GoGreenAppSecurityGroup"
-  }
-}
-
-# Database Security Group
-resource "aws_security_group" "db_sg" {
-  vpc_id = aws_vpc.main.id
-  ingress {
-    from_port   = 3306
-    to_port     = 3306
-    protocol    = "tcp"
-    cidr_blocks = ["10.0.0.0/8"]  # Allow traffic from the private subnet range
-  }
-  egress {
-    from_port   = 0
-    to_port     = 0
-    protocol    = "-1"
-    cidr_blocks = ["0.0.0.0/0"]
-  }
-  tags = {
-    Name = "GoGreenDBSecurityGroup"
-  }
-}
-
 # Bastion Host Configuration
 resource "aws_instance" "bastion" {
   ami           = "ami-047d7c33f6e7b4bc4"
@@ -473,7 +380,7 @@ resource "aws_route53_record" "alb" {
   }
 }
 
-# S3 Bucket Configuration
+#S3 Bucket Configuration
 resource "aws_s3_bucket" "static_assets" {
   bucket = "gogreen-static-assets"  # Replace with a unique bucket name
   tags = {
@@ -488,9 +395,9 @@ resource "aws_s3_bucket_acl" "static_assets_acl" {
 
 # S3 Bucket for Glacier
 resource "aws_s3_bucket" "archival_bucket" {
-  bucket = "gogreen-archive-bucket"  # Replace with a unique bucket name
+ bucket = "gogreen-archive-bucket"  # Replace with a unique bucket name
   tags = {
-    Name = "GoGreenArchiveBucket"
+   Name = "GoGreenArchiveBucket"
   }
 }
 
@@ -515,49 +422,4 @@ resource "aws_s3_bucket_lifecycle_configuration" "lifecycle" {
       days = 365  # Expire objects after 365 days
     }
   }
-}
-
-# Outputs
-output "vpc_id" {
-  value = aws_vpc.main.id
-}
-
-output "public_subnet_id" {
-  value = aws_subnet.public.id
-}
-
-output "public_subnet_b_id" {
-  value = aws_subnet.public_b.id
-}
-
-output "app_private_subnet_id" {
-  value = aws_subnet.app_private.id
-}
-
-output "app_private_subnet_b_id" {
-  value = aws_subnet.app_private_b.id
-}
-
-output "db_private_subnet_id" {
-  value = aws_subnet.db_private.id
-}
-
-output "alb_dns_name" {
-  value = aws_lb.app_lb.dns_name
-}
-
-output "bastion_host_id" {
-  value = aws_instance.bastion.id
-}
-
-output "route53_zone_id" {
-  value = aws_route53_zone.main.id
-}
-
-output "static_assets_bucket_name" {
-  value = aws_s3_bucket.static_assets.bucket
-}
-
-output "archival_bucket_name" {
-  value = aws_s3_bucket.archival_bucket.bucket
 }
