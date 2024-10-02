@@ -1,8 +1,7 @@
-provider "aws" {
-  region = "us-west-1"
-}
+
+
 resource "aws_key_pair" "my_key" {
-  key_name   = "fist-deployer-key"
+  key_name   = "first-deployer-key" # Fixed Typo
   public_key = file("~/.ssh/id_ed25519.pub")
 }
 # Variable Declarations
@@ -179,10 +178,13 @@ resource "aws_security_group" "db_sg" {
     Name = "GoGreenDBSecurityGroup"
   }
 }
-# IAM Role Policy Attachment
-resource "aws_iam_role_policy_attachment" "ec2_role_attachment" {
-  policy_arn = aws_iam_policy.ec2_policy.arn
-  role       = aws_iam_role.ec2_role.name
+# AWS KMS Key for Encryption
+resource "aws_kms_key" "s3_kms_key" {
+  description = "KMS key for S3 bucket encryption"
+  key_usage   = "ENCRYPT_DECRYPT"
+  tags = {
+    Name = "GoGreenS3KMSKey"
+  }
 }
 # S3 Bucket Configuration
 resource "aws_s3_bucket" "static_assets" {
@@ -219,146 +221,6 @@ resource "aws_s3_bucket" "archival_bucket" {
     Name = "GoGreenArchiveBucket"
   }
 }
-# AWS KMS Key for Encryption
-resource "aws_kms_key" "s3_kms_key" {
-  description = "KMS key for S3 bucket encryption"
-  key_usage   = "ENCRYPT_DECRYPT"
-  tags = {
-    Name = "GoGreenS3KMSKey"
-  }
-}
-# Secrets Manager Configuration
-resource "aws_secretsmanager_secret" "db_credentials" {
-  name        = "db_credentials"
-  description = "Database credentials for GoGreen"
-  tags = {
-    Name = "GoGreenDBCredentials"
-  }
-}
-resource "random_password" "db_password" {
-  length  = 16
-  special = true
-}
-resource "aws_secretsmanager_secret_version" "db_credentials_version" {
-  secret_id     = aws_secretsmanager_secret.db_credentials.id
-  secret_string = jsonencode({
-    username = "dbadmin"
-    password = random_password.db_password.result
-    host     = aws_db_instance.default.endpoint
-  })
-}
-# Outputs for IAM and KMS
-output "ec2_role_arn" {
-  value = aws_iam_role.ec2_role.arn
-}
-output "s3_kms_key_id" {
-  value = aws_kms_key.s3_kms_key.id
-}
-# Outputs for Users
-output "users" {
-  value = {
-    db_admin = [for user in aws_iam_user.user : user.name if contains(local.db_admin_users, user.name)]
-    monitor  = [for user in aws_iam_user.user : user.name if contains(local.monitor_users, user.name)]
-    sysadmin = [for user in aws_iam_user.user : user.name if contains(local.sysadmin_users, user.name)]
-  }
-}
-# Load Balancer Configuration
-resource "aws_lb" "app_lb" {
-  name                     = "go-green-alb"
-  internal                 = false
-  load_balancer_type       = "application"
-  security_groups          = [aws_security_group.alb_sg.id]
-  subnets                  = aws_subnet.public[*].id
-  enable_deletion_protection = false
-  tags = {
-    Name = "GoGreenALB"
-  }
-}
-# Target Group Configuration
-resource "aws_lb_target_group" "app_tg" {
-  name     = "go-green-app-tg"
-  port     = 80
-  protocol = "HTTP"
-  vpc_id   = aws_vpc.main.id
-  tags = {
-    Name = "GoGreenAppTargetGroup"
-  }
-}
-# Bastion Host Configuration
-resource "aws_instance" "bastion" {
-  ami                 = "ami-047d7c33f6e7b4bc4"
-  instance_type       = "t3.micro"
-  subnet_id           = aws_subnet.public[0].id
-  key_name            = "your_key_pair_name"
-  security_groups     = [aws_security_group.bastion_sg.name]
-  tags = {
-    Name        = "GoGreenBastionHost"
-    Environment = var.environment
-  }
-}
-# Database Subnet Group
-resource "aws_db_subnet_group" "default" {
-  name       = "go-green-db-subnet-group"
-  subnet_ids = [aws_subnet.private[1].id, aws_subnet.private[0].id]
-  tags = {
-    Name = "GoGreenDBSubnetGroup"
-  }
-}
-# Database Instance Configuration
-resource "aws_db_instance" "default" {
-  identifier                = "go-green-db"
-  engine                    = "mysql"
-  engine_version            = "8.0"
-  instance_class            = "db.m5.large"
-  allocated_storage          = 100
-  storage_type              = "gp2"
-  username                  = "admin"
-  password                  = random_password.db_password.result
-  db_name                   = "gogreen_db"
-  vpc_security_group_ids    = [aws_security_group.db_sg.id]
-  skip_final_snapshot       = false
-  final_snapshot_identifier  = "mydb-final-snapshot-${var.environment}"
-  multi_az                  = true  
-  backup_retention_period    = 14  
-  db_subnet_group_name      = aws_db_subnet_group.default.name
-  tags = {
-    Name        = "GoGreenDBInstance"
-    Environment = var.environment
-  }
-}
-# CloudWatch Alarm Configuration
-resource "aws_cloudwatch_metric_alarm" "http_error_alarm" {
-  alarm_name            = "HTTP400ErrorsAlarm"
-  comparison_operator   = "GreaterThanThreshold"
-  evaluation_periods    = 1
-  metric_name           = "4XXError"
-  namespace             = "AWS/ApplicationELB"
-  period                = 60
-  statistic             = "Sum"
-  threshold             = 100
-  alarm_description     = "Alarm when there are more than 100 HTTP 400 errors in a minute"
-  actions_enabled       = true
-  
-  dimensions = {
-    LoadBalancer = aws_lb.app_lb.arn
-  }
-  
-  alarm_actions = ["arn:aws:sns:us-west-1:123456789012:your_sns_topic"]
-}
-# Route 53 Configuration
-resource "aws_route53_zone" "main" {
-  name = "yourdomain.com"  
-}
-resource "aws_route53_record" "alb" {
-  zone_id = aws_route53_zone.main.id
-  name     = "www.yourdomain.com"
-  type     = "A"
-  alias {
-    name                   = aws_lb.app_lb.dns_name
-    zone_id                = aws_lb.app_lb.zone_id
-    evaluate_target_health = true
-  }
-}
 # S3 Bucket Lifecycle Configuration
 resource "aws_s3_bucket_lifecycle_configuration" "lifecycle" {
   bucket = aws_s3_bucket.archival_bucket.id
@@ -374,26 +236,7 @@ resource "aws_s3_bucket_lifecycle_configuration" "lifecycle" {
     }
   }
 }
-# Backup and Disaster Recovery Plan
-## EBS Snapshot Automation
-resource "aws_ebs_snapshot_schedule" "ebs_snapshot" {
-  name        = "GoGreenEBSnapshotSchedule"
-  description = "Automated EBS Snapshot Schedule"
-  instance_id = aws_instance.bastion.id
-  schedule    = "cron(0 2 * * ? *)"
-  retention   = 7
-}
-resource "aws_lambda_function" "ebs_snapshot_lambda" {
-  function_name = "EBSnapshotAutomation"
-  handler       = "index.handler"
-  role          = aws_iam_role.lambda_exec_role.arn
-  runtime       = "python3.8"
-  filename      = "path_to_your_lambda_zip_file.zip"  # Update with the actual path
-  environment {
-    INSTANCE_ID = aws_instance.bastion.id
-    RETENTION   = 7
-  }
-}
+# IAM Role for Lambda Execution
 resource "aws_iam_role" "lambda_exec_role" {
   name = "EBSnapshotLambdaRole"
   assume_role_policy = jsonencode({
@@ -408,46 +251,6 @@ resource "aws_iam_role" "lambda_exec_role" {
       },
     ]
   })
-}
-resource "aws_iam_role_policy" "lambda_policy" {
-  name = "EBSnapshotLambdaPolicy"
-  role = aws_iam_role.lambda_exec_role.id
-  policy = jsonencode({
-    Version = "2012-10-17",
-    Statement = [
-      {
-        Effect = "Allow",
-        Action = [
-          "ec2:CreateSnapshot",
-          "ec2:DescribeVolumes",
-          "ec2:DeleteSnapshot",
-          "ec2:DescribeSnapshots"
-        ],
-        Resource = "*"
-      },
-    ]
-  })
-}
-# Versioning and Lifecycle Rules for S3 Buckets
-resource "aws_s3_bucket_versioning" "static_assets" {
-  bucket = aws_s3_bucket.static_assets.id
-  
-  versioning_configuration {
-    status = "Enabled"
-  }
-}
-resource "aws_s3_bucket_replication_configuration" "static_assets_replication" {
-  provider = aws.us_east_1  # Example: set provider for replication
-  bucket   = aws_s3_bucket.static_assets.id
-  role = aws_iam_role.replication_role.arn
-  rules {
-    id     = "replicate-static-assets"
-    status = "Enabled"
-    destination {
-      bucket        = aws_s3_bucket.archival_bucket.id
-      storage_class = "GLACIER"
-    }
-  }
 }
 # IAM Role for S3 Replication
 resource "aws_iam_role" "replication_role" {
@@ -485,4 +288,180 @@ resource "aws_iam_role_policy" "replication_policy" {
       },
     ]
   })
+}
+# Backup and Disaster Recovery Plan
+## EBS Snapshot Automation
+resource "aws_lambda_function" "ebs_snapshot_lambda" {
+  function_name = "EBSnapshotAutomation"
+  handler       = "index.handler"
+  role          = aws_iam_role.lambda_exec_role.arn
+  runtime       = "python3.8"
+  filename      = "path_to_your_lambda_zip_file.zip"  # Update with the actual path
+  environment {
+    INSTANCE_ID = aws_instance.bastion.id
+    RETENTION   = 7
+  }
+}
+resource "aws_iam_role_policy" "lambda_policy" {
+  name = "EBSnapshotLambdaPolicy"
+  role = aws_iam_role.lambda_exec_role.id
+  policy = jsonencode({
+    Version = "2012-10-17",
+    Statement = [
+      {
+        Effect = "Allow",
+        Action = [
+          "ec2:CreateSnapshot",
+          "ec2:DescribeVolumes",
+          "ec2:DeleteSnapshot",
+          "ec2:DescribeSnapshots"
+        ],
+        Resource = "*"
+      },
+    ]
+  })
+}
+resource "aws_ebs_snapshot_schedule" "ebs_snapshot" {
+  name        = "GoGreenEBSnapshotSchedule"
+  description = "Automated EBS Snapshot Schedule"
+  instance_id = aws_instance.bastion.id
+  schedule    = "cron(0 2 * * ? *)"
+  retention   = 7
+}
+# Versioning and Lifecycle Rules for S3 Buckets
+resource "aws_s3_bucket_versioning" "static_assets" {
+  bucket = aws_s3_bucket.static_assets.id
+  versioning_configuration {
+    status = "Enabled"
+  }
+}
+resource "aws_s3_bucket_replication_configuration" "static_assets_replication" {
+  provider = aws.us_east_1  # Example: set provider for replication
+  bucket   = aws_s3_bucket.static_assets.id
+  role     = aws_iam_role.replication_role.arn
+  rules {
+    id     = "replicate-static-assets"
+    status = "Enabled"
+    destination {
+      bucket        = aws_s3_bucket.archival_bucket.id
+      storage_class = "GLACIER"
+    }
+  }
+}
+# Database Subnet Group
+resource "aws_db_subnet_group" "default" {
+  name       = "go-green-db-subnet-group"
+  subnet_ids = [aws_subnet.private[1].id, aws_subnet.private[0].id]
+  tags = {
+    Name = "GoGreenDBSubnetGroup"
+  }
+}
+# Database Instance Configuration
+resource "aws_db_instance" "default" {
+  identifier                = "go-green-db"
+  engine                    = "mysql"
+  engine_version            = "8.0"
+  instance_class            = "db.m5.large"
+  allocated_storage          = 100
+  storage_type              = "gp2"
+  username                  = "admin"
+  password                  = "your_password_here"  # Replace with a secure password or use a Secrets Manager
+  db_name                   = "gogreen_db"
+  vpc_security_group_ids    = [aws_security_group.db_sg.id]
+  skip_final_snapshot       = false
+  final_snapshot_identifier  = "mydb-final-snapshot-${var.environment}"
+  multi_az                  = true  
+  backup_retention_period    = 14  
+  db_subnet_group_name      = aws_db_subnet_group.default.name
+  tags = {
+    Name        = "GoGreenDBInstance"
+    Environment = var.environment
+  }
+}
+# CloudWatch Alarm Configuration
+resource "aws_cloudwatch_metric_alarm" "http_error_alarm" {
+  alarm_name            = "HTTP400ErrorsAlarm"
+  comparison_operator   = "GreaterThanThreshold"
+  evaluation_periods    = 1
+  metric_name           = "4XXError"
+  namespace             = "AWS/ApplicationELB"
+  period                = 60
+  statistic             = "Sum"
+  threshold             = 100
+  alarm_description     = "Alarm when there are more than 100 HTTP 400 errors in a minute"
+  actions_enabled       = true
+  
+  dimensions = {
+    LoadBalancer = aws_lb.app_lb.arn
+  }
+  
+  alarm_actions = ["arn:aws:sns:us-west-1:123456789012:your_sns_topic"]
+}
+# Load Balancer Configuration
+resource "aws_lb" "app_lb" {
+  name                     = "go-green-alb"
+  internal                 = false
+  load_balancer_type       = "application"
+  security_groups          = [aws_security_group.alb_sg.id]
+  subnets                  = aws_subnet.public[*].id
+  enable_deletion_protection = false
+  tags = {
+    Name = "GoGreenALB"
+  }
+}
+# Target Group Configuration
+resource "aws_lb_target_group" "app_tg" {
+  name     = "go-green-app-tg"
+  port     = 80
+  protocol = "HTTP"
+  vpc_id   = aws_vpc.main.id
+  tags = {
+    Name = "GoGreenAppTargetGroup"
+  }
+}
+# Bastion Host Configuration
+resource "aws_instance" "bastion" {
+  ami                 = "ami-047d7c33f6e7b4bc4"
+  instance_type       = "t3.micro"
+  subnet_id           = aws_subnet.public[0].id
+  key_name            = aws_key_pair.my_key.key_name
+  security_groups     = [aws_security_group.bastion_sg.name]
+  tags = {
+    Name        = "GoGreenBastionHost"
+    Environment = var.environment
+  }
+}
+# Secrets Manager Configuration
+resource "aws_secretsmanager_secret" "db_credentials" {
+  name        = "db_credentials"
+  description = "Database credentials for GoGreen"
+  tags = {
+    Name = "GoGreenDBCredentials"
+  }
+}
+resource "random_password" "db_password" {
+  length  = 16
+  special = true
+}
+resource "aws_secretsmanager_secret_version" "db_credentials_version" {
+  secret_id     = aws_secretsmanager_secret.db_credentials.id
+  secret_string = jsonencode({
+    username = "dbadmin"
+    password = random_password.db_password.result
+    host     = aws_db_instance.default.endpoint
+  })
+}
+# Route 53 Configuration
+resource "aws_route53_zone" "main" {
+  name = "yourdomain.com"  
+}
+resource "aws_route53_record" "alb" {
+  zone_id = aws_route53_zone.main.id
+  name     = "www.yourdomain.com"
+  type     = "A"
+  alias {
+    name                   = aws_lb.app_lb.dns_name
+    zone_id                = aws_lb.app_lb.zone_id
+    evaluate_target_health = true
+  }
 }
