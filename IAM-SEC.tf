@@ -1,4 +1,4 @@
- #IAM Configuration
+#IAM Configuration
 # Define IAM Groups
 resource "aws_iam_group" "db_admin" {
   name = "DBAdmin"
@@ -29,14 +29,14 @@ locals {
 # Create IAM Users
 resource "aws_iam_user" "user" {
   for_each = local.users_map
-  name = each.key
+  name     = each.key
 }
 
 # Create IAM User Group Membership
 resource "aws_iam_user_group_membership" "membership" {
   for_each = local.users_map
-  user   = each.key
-  groups = ["iam_usergroup_name"] # Replace with your actual group name
+  user     = each.key
+  groups   = ["iam_usergroup_name"] # Replace with your actual group name
 }
 
 # Attach Users to Groups
@@ -46,20 +46,20 @@ resource "aws_iam_user_group_membership" "group_membership" {
     local.monitor_users,
     local.sysadmin_users
   ])
-  user   = aws_iam_user.user[each.value].name
+  user = aws_iam_user.user[each.value].name
   groups = [
     aws_iam_group.db_admin.name,
     aws_iam_group.monitor.name,
     aws_iam_group.sysadmin.name
-  ][lookup({
-    "dbadmin1" = aws_iam_group.db_admin.name,
-    "dbadmin2" = aws_iam_group.db_admin.name,
-    "monitoruser1" = aws_iam_group.monitor.name,
-    "monitoruser2" = aws_iam_group.monitor.name,
-    "monitoruser3" = aws_iam_group.monitor.name,
-    "monitoruser4" = aws_iam_group.monitor.name,
-    "sysadmin1" = aws_iam_group.sysadmin.name,
-    "sysadmin2" = aws_iam_group.sysadmin.name
+    ][lookup({
+      "dbadmin1"     = aws_iam_group.db_admin.name,
+      "dbadmin2"     = aws_iam_group.db_admin.name,
+      "monitoruser1" = aws_iam_group.monitor.name,
+      "monitoruser2" = aws_iam_group.monitor.name,
+      "monitoruser3" = aws_iam_group.monitor.name,
+      "monitoruser4" = aws_iam_group.monitor.name,
+      "sysadmin1"    = aws_iam_group.sysadmin.name,
+      "sysadmin2"    = aws_iam_group.sysadmin.name
   }, each.value)]
 }
 
@@ -70,8 +70,8 @@ resource "aws_iam_role" "ec2_role" {
     Version = "2012-10-17"
     Statement = [
       {
-        Action    = "sts:AssumeRole"
-        Effect    = "Allow"
+        Action = "sts:AssumeRole"
+        Effect = "Allow"
         Principal = {
           Service = "ec2.amazonaws.com"
         }

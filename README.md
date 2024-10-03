@@ -1,3 +1,1 @@
-# RNR_for_GoGreen
-Provision Network Resources for Go Green Insurance 3-Tier Web Application
-As part of the Go Green Insurance Company project, the next step involves provisioning the necessary network infrastructure for the 3-tier web application. This includes designing and implementing a secure and scalable network environment that supports the connectivity requirements for all tiers of the application. The task involves setting up the foundational network components to ensure proper isolation, communication, and security between the layers. These network resources will form the backbone of the cloud infrastructure and are critical to the successful operation of the web application.
+# Test-Repo

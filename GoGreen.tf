@@ -1,5 +1,4 @@
 
-
 resource "aws_key_pair" "my_key" {
   key_name   = "first-deployer-key" # Fixed Typo
   public_key = file("~/.ssh/id_ed25519.pub")
@@ -15,7 +14,7 @@ resource "aws_vpc" "main" {
   cidr_block = "10.0.0.0/16"
   tags = {
     Name        = "GoGreenVPC"
-    Environment = var.environment 
+    Environment = var.environment
   }
 }
 # Subnet Configurations
@@ -32,10 +31,10 @@ resource "aws_subnet" "public" {
 }
 ## Private Subnets
 resource "aws_subnet" "private" {
-  count              = 3
-  vpc_id             = aws_vpc.main.id
-  cidr_block         = "10.0.${count.index + 3}.0/24"
-  availability_zone  = element(["us-west-1a", "us-west-1b", "us-west-1a"], count.index)
+  count             = 3
+  vpc_id            = aws_vpc.main.id
+  cidr_block        = "10.0.${count.index + 3}.0/24"
+  availability_zone = element(["us-west-1a", "us-west-1b", "us-west-1a"], count.index)
   tags = {
     Name = "GoGreen${count.index == 1 ? "App" : count.index == 2 ? "DB" : ""}PrivateSubnet${count.index == 1 ? "B" : ""}"
   }
@@ -71,7 +70,7 @@ resource "aws_eip" "nat_eip" {
 resource "aws_nat_gateway" "nat" {
   allocation_id = aws_eip.nat_eip.id
   subnet_id     = aws_subnet.public[0].id
-  
+
   tags = {
     Name = "GoGreenNATGateway"
   }
@@ -139,16 +138,16 @@ resource "aws_security_group" "alb_sg" {
 resource "aws_security_group" "app_sg" {
   vpc_id = aws_vpc.main.id
   ingress {
-    from_port      = 80
-    to_port        = 80
-    protocol       = "tcp"
+    from_port       = 80
+    to_port         = 80
+    protocol        = "tcp"
     security_groups = [aws_security_group.alb_sg.id]
   }
   ingress {
-    from_port      = 3306
-    to_port        = 3306
-    protocol       = "tcp"
-    cidr_blocks     = ["10.0.0.0/8"]
+    from_port   = 3306
+    to_port     = 3306
+    protocol    = "tcp"
+    cidr_blocks = ["10.0.0.0/8"]
   }
   egress {
     from_port   = 0
@@ -228,11 +227,11 @@ resource "aws_s3_bucket_lifecycle_configuration" "lifecycle" {
     id     = "MoveToGlacier"
     status = "Enabled"
     transition {
-      days          = 30  
+      days          = 30
       storage_class = "GLACIER"
     }
     expiration {
-      days = 365  
+      days = 365
     }
   }
 }
@@ -296,7 +295,7 @@ resource "aws_lambda_function" "ebs_snapshot_lambda" {
   handler       = "index.handler"
   role          = aws_iam_role.lambda_exec_role.arn
   runtime       = "python3.8"
-  filename      = "path_to_your_lambda_zip_file.zip"  # Update with the actual path
+  filename      = "path_to_your_lambda_zip_file.zip" # Update with the actual path
   environment {
     INSTANCE_ID = aws_instance.bastion.id
     RETENTION   = 7
@@ -336,7 +335,7 @@ resource "aws_s3_bucket_versioning" "static_assets" {
   }
 }
 resource "aws_s3_bucket_replication_configuration" "static_assets_replication" {
-  provider = aws.us_east_1  # Example: set provider for replication
+  provider = aws.us-west-1 # Example: set provider for replication
   bucket   = aws_s3_bucket.static_assets.id
   role     = aws_iam_role.replication_role.arn
   rules {
@@ -362,48 +361,30 @@ resource "aws_db_instance" "default" {
   engine                    = "mysql"
   engine_version            = "8.0"
   instance_class            = "db.m5.large"
-  allocated_storage          = 100
+  allocated_storage         = 100
   storage_type              = "gp2"
   username                  = "admin"
-  password                  = "your_password_here"  # Replace with a secure password or use a Secrets Manager
+  password                  = "your_password_here" # Replace with a secure password or use a Secrets Manager
   db_name                   = "gogreen_db"
   vpc_security_group_ids    = [aws_security_group.db_sg.id]
   skip_final_snapshot       = false
-  final_snapshot_identifier  = "mydb-final-snapshot-${var.environment}"
-  multi_az                  = true  
-  backup_retention_period    = 14  
+  final_snapshot_identifier = "mydb-final-snapshot-${var.environment}"
+  multi_az                  = true
+  backup_retention_period   = 14
   db_subnet_group_name      = aws_db_subnet_group.default.name
   tags = {
     Name        = "GoGreenDBInstance"
     Environment = var.environment
   }
 }
-# CloudWatch Alarm Configuration
-resource "aws_cloudwatch_metric_alarm" "http_error_alarm" {
-  alarm_name            = "HTTP400ErrorsAlarm"
-  comparison_operator   = "GreaterThanThreshold"
-  evaluation_periods    = 1
-  metric_name           = "4XXError"
-  namespace             = "AWS/ApplicationELB"
-  period                = 60
-  statistic             = "Sum"
-  threshold             = 100
-  alarm_description     = "Alarm when there are more than 100 HTTP 400 errors in a minute"
-  actions_enabled       = true
-  
-  dimensions = {
-    LoadBalancer = aws_lb.app_lb.arn
-  }
-  
-  alarm_actions = ["arn:aws:sns:us-west-1:123456789012:your_sns_topic"]
-}
+
 # Load Balancer Configuration
 resource "aws_lb" "app_lb" {
-  name                     = "go-green-alb"
-  internal                 = false
-  load_balancer_type       = "application"
-  security_groups          = [aws_security_group.alb_sg.id]
-  subnets                  = aws_subnet.public[*].id
+  name                       = "go-green-alb"
+  internal                   = false
+  load_balancer_type         = "application"
+  security_groups            = [aws_security_group.alb_sg.id]
+  subnets                    = aws_subnet.public[*].id
   enable_deletion_protection = false
   tags = {
     Name = "GoGreenALB"
@@ -421,11 +402,11 @@ resource "aws_lb_target_group" "app_tg" {
 }
 # Bastion Host Configuration
 resource "aws_instance" "bastion" {
-  ami                 = "ami-047d7c33f6e7b4bc4"
-  instance_type       = "t3.micro"
-  subnet_id           = aws_subnet.public[0].id
-  key_name            = aws_key_pair.my_key.key_name
-  security_groups     = [aws_security_group.bastion_sg.name]
+  ami             = "ami-047d7c33f6e7b4bc4"
+  instance_type   = "t3.micro"
+  subnet_id       = aws_subnet.public[0].id
+  key_name        = aws_key_pair.my_key.key_name
+  security_groups = [aws_security_group.bastion_sg.name]
   tags = {
     Name        = "GoGreenBastionHost"
     Environment = var.environment
@@ -444,7 +425,7 @@ resource "random_password" "db_password" {
   special = true
 }
 resource "aws_secretsmanager_secret_version" "db_credentials_version" {
-  secret_id     = aws_secretsmanager_secret.db_credentials.id
+  secret_id = aws_secretsmanager_secret.db_credentials.id
   secret_string = jsonencode({
     username = "dbadmin"
     password = random_password.db_password.result
@@ -453,12 +434,12 @@ resource "aws_secretsmanager_secret_version" "db_credentials_version" {
 }
 # Route 53 Configuration
 resource "aws_route53_zone" "main" {
-  name = "yourdomain.com"  
+  name = "yourdomain.com"
 }
 resource "aws_route53_record" "alb" {
   zone_id = aws_route53_zone.main.id
-  name     = "www.yourdomain.com"
-  type     = "A"
+  name    = "www.yourdomain.com"
+  type    = "A"
   alias {
     name                   = aws_lb.app_lb.dns_name
     zone_id                = aws_lb.app_lb.zone_id
