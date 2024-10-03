@@ -42,11 +42,3 @@ output "http_error_alarm_name" {
 output "ec2_role_arn" {
   value = aws_iam_role.ec2_role.arn
 }
-# Outputs for Users
-output "users" {
-  value = {
-    db_admin = [for user in aws_iam_user.user : user.name if contains(local.db_admin_users, user.name)]
-    monitor  = [for user in aws_iam_user.user : user.name if contains(local.monitor_users, user.name)]
-    sysadmin = [for user in aws_iam_user.user : user.name if contains(local.sysadmin_users, user.name)]
-  }
-}

@@ -1,8 +1,4 @@
 
-resource "aws_key_pair" "my_key" {
-  key_name   = "first-deployer-key" # Fixed Typo
-  public_key = file("~/.ssh/id_ed25519.pub")
-}
 # Variable Declarations
 variable "environment" {
   description = "The environment of the deployment (e.g., dev, stage, prod)"
@@ -12,6 +8,7 @@ variable "environment" {
 # VPC Configuration
 resource "aws_vpc" "main" {
   cidr_block = "10.0.0.0/16"
+
   tags = {
     Name        = "GoGreenVPC"
     Environment = var.environment
@@ -25,6 +22,7 @@ resource "aws_subnet" "public" {
   cidr_block              = "10.0.${count.index + 1}.0/24"
   availability_zone       = element(["us-west-1a", "us-west-1b"], count.index)
   map_public_ip_on_launch = true
+
   tags = {
     Name = "GoGreenPublicSubnet${count.index == 0 ? "" : "B"}"
   }
@@ -34,7 +32,8 @@ resource "aws_subnet" "private" {
   count             = 3
   vpc_id            = aws_vpc.main.id
   cidr_block        = "10.0.${count.index + 3}.0/24"
-  availability_zone = element(["us-west-1a", "us-west-1b", "us-west-1a"], count.index)
+  availability_zone = element(["us-west-1a", "us-west-1b", "us-west-1c"], count.index)
+
   tags = {
     Name = "GoGreen${count.index == 1 ? "App" : count.index == 2 ? "DB" : ""}PrivateSubnet${count.index == 1 ? "B" : ""}"
   }
@@ -42,6 +41,7 @@ resource "aws_subnet" "private" {
 # Internet Gateway Configuration
 resource "aws_internet_gateway" "igw" {
   vpc_id = aws_vpc.main.id
+
   tags = {
     Name = "GoGreenIGW"
   }
@@ -49,6 +49,7 @@ resource "aws_internet_gateway" "igw" {
 # Route Table Configurations
 resource "aws_route_table" "public" {
   vpc_id = aws_vpc.main.id
+
   route {
     cidr_block = "0.0.0.0/0"
     gateway_id = aws_internet_gateway.igw.id
@@ -78,6 +79,7 @@ resource "aws_nat_gateway" "nat" {
 # Route Table for Private Subnets
 resource "aws_route_table" "private" {
   vpc_id = aws_vpc.main.id
+
   route {
     cidr_block     = "0.0.0.0/0"
     nat_gateway_id = aws_nat_gateway.nat.id
@@ -95,84 +97,98 @@ resource "aws_route_table_association" "private_association" {
 # Security Groups Configuration
 resource "aws_security_group" "bastion_sg" {
   vpc_id = aws_vpc.main.id
+
   ingress {
     from_port   = 22
     to_port     = 22
     protocol    = "tcp"
     cidr_blocks = ["203.0.113.45/32"]
   }
+
   egress {
     from_port   = 0
     to_port     = 0
     protocol    = "-1"
     cidr_blocks = ["0.0.0.0/0"]
   }
+
   tags = {
     Name = "GoGreenBastionSecurityGroup"
   }
 }
 resource "aws_security_group" "alb_sg" {
   vpc_id = aws_vpc.main.id
+
   ingress {
     from_port   = 80
     to_port     = 80
     protocol    = "tcp"
     cidr_blocks = ["0.0.0.0/0"]
   }
+
   ingress {
     from_port   = 443
     to_port     = 443
     protocol    = "tcp"
     cidr_blocks = ["0.0.0.0/0"]
   }
+
   egress {
     from_port   = 0
     to_port     = 0
     protocol    = "-1"
     cidr_blocks = ["0.0.0.0/0"]
   }
+
   tags = {
     Name = "GoGreenALBSecurityGroup"
   }
 }
 resource "aws_security_group" "app_sg" {
   vpc_id = aws_vpc.main.id
+
   ingress {
     from_port       = 80
     to_port         = 80
     protocol        = "tcp"
     security_groups = [aws_security_group.alb_sg.id]
   }
+
   ingress {
     from_port   = 3306
     to_port     = 3306
     protocol    = "tcp"
     cidr_blocks = ["10.0.0.0/8"]
   }
+
   egress {
     from_port   = 0
     to_port     = 0
     protocol    = "-1"
     cidr_blocks = ["0.0.0.0/0"]
   }
+
   tags = {
     Name = "GoGreenAppSecurityGroup"
   }
 }
 resource "aws_security_group" "db_sg" {
   vpc_id = aws_vpc.main.id
+
   ingress {
     from_port   = 3306
     to_port     = 3306
     protocol    = "tcp"
     cidr_blocks = ["10.0.0.0/8"]
   }
+
   egress {
     from_port   = 0
     to_port     = 0
     protocol    = "-1"
     cidr_blocks = ["0.0.0.0/0"]
   }
+
   tags = {
     Name = "GoGreenDBSecurityGroup"
   }
@@ -181,55 +197,53 @@ resource "aws_security_group" "db_sg" {
 resource "aws_kms_key" "s3_kms_key" {
   description = "KMS key for S3 bucket encryption"
   key_usage   = "ENCRYPT_DECRYPT"
+
   tags = {
     Name = "GoGreenS3KMSKey"
   }
 }
-# S3 Bucket Configuration
+# S3 Buckets Configuration
 resource "aws_s3_bucket" "static_assets" {
   bucket = "gogreen-static-assets"
-  versioning {
-    enabled = true
-  }
-  server_side_encryption_configuration {
-    rule {
-      apply_server_side_encryption_by_default {
-        sse_algorithm     = "aws:kms"
-        kms_master_key_id = aws_kms_key.s3_kms_key.id
-      }
-    }
-  }
+
   tags = {
     Name = "GoGreenStaticAssets"
   }
 }
+resource "aws_s3_bucket_versioning" "static_assets_versioning" {
+  bucket = aws_s3_bucket.static_assets.id
+
+  versioning_configuration {
+    status = "Enabled"
+  }
+}
 resource "aws_s3_bucket" "archival_bucket" {
   bucket = "gogreen-archive-bucket"
-  versioning {
-    enabled = true
-  }
-  server_side_encryption_configuration {
-    rule {
-      apply_server_side_encryption_by_default {
-        sse_algorithm     = "aws:kms"
-        kms_master_key_id = aws_kms_key.s3_kms_key.id
-      }
-    }
-  }
+
   tags = {
     Name = "GoGreenArchiveBucket"
+  }
+}
+resource "aws_s3_bucket_versioning" "archival_bucket_versioning" {
+  bucket = aws_s3_bucket.archival_bucket.id
+
+  versioning_configuration {
+    status = "Enabled"
   }
 }
 # S3 Bucket Lifecycle Configuration
 resource "aws_s3_bucket_lifecycle_configuration" "lifecycle" {
   bucket = aws_s3_bucket.archival_bucket.id
+
   rule {
     id     = "MoveToGlacier"
     status = "Enabled"
+
     transition {
       days          = 30
       storage_class = "GLACIER"
     }
+
     expiration {
       days = 365
     }
@@ -246,9 +260,9 @@ resource "aws_iam_role" "lambda_exec_role" {
         Principal = {
           Service = "lambda.amazonaws.com"
         },
-        Action = "sts:AssumeRole"
+        Action = "sts:AssumeRole",
       },
-    ]
+    ],
   })
 }
 # IAM Role for S3 Replication
@@ -262,95 +276,51 @@ resource "aws_iam_role" "replication_role" {
         Principal = {
           Service = "s3.amazonaws.com"
         },
-        Action = "sts:AssumeRole"
+        Action = "sts:AssumeRole",
       },
-    ]
+    ],
   })
 }
 resource "aws_iam_role_policy" "replication_policy" {
-  name = "S3ReplicationPolicy"
+  name = "s3-replication-policy"
   role = aws_iam_role.replication_role.id
+
   policy = jsonencode({
     Version = "2012-10-17",
     Statement = [
       {
-        Effect = "Allow",
         Action = [
+          "s3:GetObject",
+          "s3:ListBucket",
           "s3:ReplicateObject",
           "s3:ReplicateDelete",
-          "s3:ReplicateObjectAcl"
         ],
-        Resource = [
-          "${aws_s3_bucket.static_assets.arn}/*",
-          "${aws_s3_bucket.archival_bucket.arn}/*"
-        ]
-      },
-    ]
-  })
-}
-# Backup and Disaster Recovery Plan
-## EBS Snapshot Automation
-resource "aws_lambda_function" "ebs_snapshot_lambda" {
-  function_name = "EBSnapshotAutomation"
-  handler       = "index.handler"
-  role          = aws_iam_role.lambda_exec_role.arn
-  runtime       = "python3.8"
-  filename      = "path_to_your_lambda_zip_file.zip" # Update with the actual path
-  environment {
-    INSTANCE_ID = aws_instance.bastion.id
-    RETENTION   = 7
-  }
-}
-resource "aws_iam_role_policy" "lambda_policy" {
-  name = "EBSnapshotLambdaPolicy"
-  role = aws_iam_role.lambda_exec_role.id
-  policy = jsonencode({
-    Version = "2012-10-17",
-    Statement = [
-      {
         Effect = "Allow",
-        Action = [
-          "ec2:CreateSnapshot",
-          "ec2:DescribeVolumes",
-          "ec2:DeleteSnapshot",
-          "ec2:DescribeSnapshots"
+        Resource = [
+          aws_s3_bucket.static_assets.arn,
+          "${aws_s3_bucket.static_assets.arn}/*", # Allows access to all objects in this bucket
         ],
-        Resource = "*"
       },
-    ]
+      {
+        Action = [
+          "s3:PutObject",
+          "s3:ReplicateObject",
+          "s3:ReplicateDelete",
+        ],
+        Effect = "Allow",
+        Resource = [
+          aws_s3_bucket.archival_bucket.arn,
+          "${aws_s3_bucket.archival_bucket.arn}/*", # Allows access to all objects in the destination bucket
+        ],
+      },
+    ],
   })
-}
-resource "aws_ebs_snapshot_schedule" "ebs_snapshot" {
-  name        = "GoGreenEBSnapshotSchedule"
-  description = "Automated EBS Snapshot Schedule"
-  instance_id = aws_instance.bastion.id
-  schedule    = "cron(0 2 * * ? *)"
-  retention   = 7
-}
-# Versioning and Lifecycle Rules for S3 Buckets
-resource "aws_s3_bucket_versioning" "static_assets" {
-  bucket = aws_s3_bucket.static_assets.id
-  versioning_configuration {
-    status = "Enabled"
-  }
-}
-resource "aws_s3_bucket_replication_configuration" "static_assets_replication" {
-  provider = aws.us-west-1 # Example: set provider for replication
-  bucket   = aws_s3_bucket.static_assets.id
-  role     = aws_iam_role.replication_role.arn
-  rules {
-    id     = "replicate-static-assets"
-    status = "Enabled"
-    destination {
-      bucket        = aws_s3_bucket.archival_bucket.id
-      storage_class = "GLACIER"
-    }
-  }
 }
 # Database Subnet Group
 resource "aws_db_subnet_group" "default" {
   name       = "go-green-db-subnet-group"
   subnet_ids = [aws_subnet.private[1].id, aws_subnet.private[0].id]
+
   tags = {
     Name = "GoGreenDBSubnetGroup"
   }
@@ -364,7 +334,7 @@ resource "aws_db_instance" "default" {
   allocated_storage         = 100
   storage_type              = "gp2"
   username                  = "admin"
-  password                  = "your_password_here" # Replace with a secure password or use a Secrets Manager
+  password                  = "your_password_here" # Security! Consider using Secrets Manager.
   db_name                   = "gogreen_db"
   vpc_security_group_ids    = [aws_security_group.db_sg.id]
   skip_final_snapshot       = false
@@ -372,12 +342,12 @@ resource "aws_db_instance" "default" {
   multi_az                  = true
   backup_retention_period   = 14
   db_subnet_group_name      = aws_db_subnet_group.default.name
+
   tags = {
     Name        = "GoGreenDBInstance"
     Environment = var.environment
   }
 }
-
 # Load Balancer Configuration
 resource "aws_lb" "app_lb" {
   name                       = "go-green-alb"
@@ -386,6 +356,7 @@ resource "aws_lb" "app_lb" {
   security_groups            = [aws_security_group.alb_sg.id]
   subnets                    = aws_subnet.public[*].id
   enable_deletion_protection = false
+
   tags = {
     Name = "GoGreenALB"
   }
@@ -396,17 +367,18 @@ resource "aws_lb_target_group" "app_tg" {
   port     = 80
   protocol = "HTTP"
   vpc_id   = aws_vpc.main.id
+
   tags = {
     Name = "GoGreenAppTargetGroup"
   }
 }
 # Bastion Host Configuration
 resource "aws_instance" "bastion" {
-  ami             = "ami-047d7c33f6e7b4bc4"
+  ami             = "ami-047d7c33f6e7b4bc4" # Use a valid AMI ID
   instance_type   = "t3.micro"
   subnet_id       = aws_subnet.public[0].id
-  key_name        = aws_key_pair.my_key.key_name
   security_groups = [aws_security_group.bastion_sg.name]
+
   tags = {
     Name        = "GoGreenBastionHost"
     Environment = var.environment
@@ -416,6 +388,7 @@ resource "aws_instance" "bastion" {
 resource "aws_secretsmanager_secret" "db_credentials" {
   name        = "db_credentials"
   description = "Database credentials for GoGreen"
+
   tags = {
     Name = "GoGreenDBCredentials"
   }
@@ -434,15 +407,158 @@ resource "aws_secretsmanager_secret_version" "db_credentials_version" {
 }
 # Route 53 Configuration
 resource "aws_route53_zone" "main" {
-  name = "yourdomain.com"
+  name = "yourdomain.com" # Change to your domain
 }
 resource "aws_route53_record" "alb" {
   zone_id = aws_route53_zone.main.id
-  name    = "www.yourdomain.com"
+  name    = "www.yourdomain.com" # Change to your desired subdomain
   type    = "A"
+
   alias {
     name                   = aws_lb.app_lb.dns_name
     zone_id                = aws_lb.app_lb.zone_id
     evaluate_target_health = true
   }
+}
+# SNS Topic
+resource "aws_sns_topic" "critical_alerts" {
+  name = "CriticalEventAlerts"
+}
+# SNS Topic Subscription (for Email)
+resource "aws_sns_topic_subscription" "critical_alerts_email" {
+  topic_arn = aws_sns_topic.critical_alerts.arn
+  protocol  = "email"
+  endpoint  = "youremail@example.com" # Replace with your email
+}
+# CloudWatch Alarms
+## High CPU Alarm for EC2
+resource "aws_cloudwatch_metric_alarm" "high_cpu" {
+  alarm_name          = "HighCPUAlarm"
+  comparison_operator = "GreaterThanThreshold"
+  evaluation_periods  = "2"
+  metric_name         = "CPUUtilization"
+  namespace           = "AWS/EC2"
+  period              = "300"
+  statistic           = "Average"
+  threshold           = "80"
+
+  alarm_description = "Triggers when CPU > 80%"
+  dimensions = {
+    InstanceId = aws_instance.bastion.id # Reference the Bastion host
+  }
+
+  alarm_actions = [aws_sns_topic.critical_alerts.arn]
+}
+## High DB Connections Alarm
+resource "aws_cloudwatch_metric_alarm" "high_db_connections" {
+  alarm_name          = "HighDBConnections"
+  comparison_operator = "GreaterThanThreshold"
+  evaluation_periods  = "2"
+  metric_name         = "DatabaseConnections"
+  namespace           = "AWS/RDS"
+  period              = "300"
+  statistic           = "Average"
+  threshold           = "100"
+
+  alarm_description = "Triggers when DB connections exceed 100."
+  dimensions = {
+    DBInstanceIdentifier = aws_db_instance.default.id
+  }
+
+  alarm_actions = [aws_sns_topic.critical_alerts.arn]
+}
+## HTTP 400 Errors Alarm
+resource "aws_cloudwatch_metric_alarm" "http_error_alarm" {
+  alarm_name          = "HTTP400ErrorsAlarm"
+  comparison_operator = "GreaterThanThreshold"
+  evaluation_periods  = 1
+  metric_name         = "4XXError"
+  namespace           = "AWS/ApplicationELB"
+  period              = 60
+  statistic           = "Sum"
+  threshold           = 100
+
+  alarm_description = "Alarm when there are more than 100 HTTP 400 errors in a minute"
+  dimensions = {
+    LoadBalancer = aws_lb.app_lb.arn
+  }
+
+  alarm_actions = [aws_sns_topic.critical_alerts.arn]
+}
+# Output SNS Topic ARN
+output "sns_topic_arn" {
+  value = aws_sns_topic.critical_alerts.arn
+}
+# S3 Replication Configuration
+resource "aws_s3_bucket_replication_configuration" "static_assets_replication" {
+  bucket = aws_s3_bucket.static_assets.id
+  role   = aws_iam_role.replication_role.arn
+
+  rule {
+    id     = "replicate-static-assets"
+    status = "Enabled"
+
+    destination {
+      bucket        = aws_s3_bucket.archival_bucket.arn
+      storage_class = "GLACIER"
+    }
+  }
+}
+# EBS Snapshot Automation Lambda Function
+resource "aws_lambda_function" "ebs_snapshot_lambda" {
+  function_name = "EBSnapshotAutomation"
+  handler       = "index.handler"
+  role          = aws_iam_role.lambda_exec_role.arn
+  runtime       = "python3.8"
+  filename      = "path_to_your_lambda_zip_file.zip" # Update with the actual path
+
+  environment {
+    variables = {
+      INSTANCE_ID = aws_instance.b
+
+      INSTANCE_ID = aws_instance.bastion.id
+      RETENTION   = 7
+    }
+  }
+}
+# Lambda IAM Policy for EBS Snapshot
+resource "aws_iam_role_policy" "lambda_policy" {
+  name = "EBSnapshotLambdaPolicy"
+  role = aws_iam_role.lambda_exec_role.id
+
+  policy = jsonencode({
+    Version = "2012-10-17",
+    Statement = [
+      {
+        Effect = "Allow",
+        Action = [
+          "ec2:CreateSnapshot",
+          "ec2:DescribeVolumes",
+          "ec2:DeleteSnapshot",
+          "ec2:DescribeSnapshots",
+        ],
+        Resource = "*",
+      },
+    ],
+  })
+}
+# CloudWatch Event Rule for EBS Snapshots Scheduling
+resource "aws_cloudwatch_event_rule" "ebs_snapshot_schedule" {
+  name                = "ebs-snapshot-schedule"
+  description         = "Scheduled rule to trigger EBS snapshot Lambda function"
+  schedule_expression = "cron(0 2 * * ? *)" # Adjust to your desired schedule
+}
+# Permission to invoke Lambda function from CloudWatch
+resource "aws_lambda_permission" "allow_cloudwatch" {
+  statement_id  = "AllowExecutionFromCloudWatch"
+  action        = "lambda:InvokeFunction"
+  function_name = aws_lambda_function.ebs_snapshot_lambda.function_name
+  principal     = "events.amazonaws.com"
+  source_arn    = aws_cloudwatch_event_rule.ebs_snapshot_schedule.arn
+}
+# Target to invoke the Lambda function on schedule
+resource "aws_cloudwatch_event_target" "lambda_target" {
+  rule      = aws_cloudwatch_event_rule.ebs_snapshot_schedule.name
+  target_id = "EBSnapshotLambdaFunction"
+  arn       = aws_lambda_function.ebs_snapshot_lambda.arn
 }

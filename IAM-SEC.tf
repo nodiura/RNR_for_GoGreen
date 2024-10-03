@@ -1,71 +1,55 @@
-#IAM Configuration
-# Define IAM Groups
+
+#Define IAM Groups based on the workspace
+
+# Define IAM Groups based on the workspace
 resource "aws_iam_group" "db_admin" {
-  name = "DBAdmin"
+  name = "${terraform.workspace}-DBAdmin"
 }
-
 resource "aws_iam_group" "monitor" {
-  name = "Monitor"
+  name = "${terraform.workspace}-Monitor"
 }
-
 resource "aws_iam_group" "sysadmin" {
-  name = "Sysadmin"
+  name = "${terraform.workspace}-Sysadmin"
 }
-
 # Define IAM Users
-locals {
-  db_admin_users = ["dbadmin1", "dbadmin2"]
-  monitor_users  = ["monitoruser1", "monitoruser2", "monitoruser3", "monitoruser4"]
-  sysadmin_users = ["sysadmin1", "sysadmin2"]
-  users_map = {
-    for user in flatten([
-      local.db_admin_users,
-      local.monitor_users,
-      local.sysadmin_users
-    ]) : user => user
-  }
+variable "db_admin_users" {
+  type    = list(string)
+  default = ["dbadmin1", "dbadmin2"]
 }
-
+variable "monitor_users" {
+  type    = list(string)
+  default = ["monitoruser1", "monitoruser2", "monitoruser3", "monitoruser4"]
+}
+variable "sysadmin_users" {
+  type    = list(string)
+  default = ["sysadmin1", "sysadmin2"]
+}
+# Combine users into a single map that indicates their groups
+locals {
+  user_group_map = merge(
+    { for user in var.db_admin_users : user => aws_iam_group.db_admin.name },
+    { for user in var.monitor_users : user => aws_iam_group.monitor.name },
+    { for user in var.sysadmin_users : user => aws_iam_group.sysadmin.name }
+  )
+  # Store user lists in locals for output
+  db_admin_users = var.db_admin_users
+  monitor_users  = var.monitor_users
+  sysadmin_users = var.sysadmin_users
+}
 # Create IAM Users
 resource "aws_iam_user" "user" {
-  for_each = local.users_map
+  for_each = local.user_group_map
   name     = each.key
 }
-
 # Create IAM User Group Membership
-resource "aws_iam_user_group_membership" "membership" {
-  for_each = local.users_map
-  user     = each.key
-  groups   = ["iam_usergroup_name"] # Replace with your actual group name
-}
-
-# Attach Users to Groups
 resource "aws_iam_user_group_membership" "group_membership" {
-  for_each = flatten([
-    local.db_admin_users,
-    local.monitor_users,
-    local.sysadmin_users
-  ])
-  user = aws_iam_user.user[each.value].name
-  groups = [
-    aws_iam_group.db_admin.name,
-    aws_iam_group.monitor.name,
-    aws_iam_group.sysadmin.name
-    ][lookup({
-      "dbadmin1"     = aws_iam_group.db_admin.name,
-      "dbadmin2"     = aws_iam_group.db_admin.name,
-      "monitoruser1" = aws_iam_group.monitor.name,
-      "monitoruser2" = aws_iam_group.monitor.name,
-      "monitoruser3" = aws_iam_group.monitor.name,
-      "monitoruser4" = aws_iam_group.monitor.name,
-      "sysadmin1"    = aws_iam_group.sysadmin.name,
-      "sysadmin2"    = aws_iam_group.sysadmin.name
-  }, each.value)]
+  for_each = local.user_group_map  # Use the mapping of users to their groups
+  user     = aws_iam_user.user[each.key].name
+  groups   = [each.value]
 }
-
 # IAM Role for EC2 Instances
 resource "aws_iam_role" "ec2_role" {
-  name = "GoGreenEC2Role"
+  name = "${terraform.workspace}-GoGreenEC2Role"
   assume_role_policy = jsonencode({
     Version = "2012-10-17"
     Statement = [
@@ -75,14 +59,13 @@ resource "aws_iam_role" "ec2_role" {
         Principal = {
           Service = "ec2.amazonaws.com"
         }
-      },
+      }
     ]
   })
 }
-
 # IAM Policy for S3 and RDS Access
 resource "aws_iam_policy" "ec2_policy" {
-  name        = "GoGreenEC2Policy"
+  name        = "${terraform.workspace}-GoGreenEC2Policy"
   description = "Policy for EC2 instances to access S3 and RDS"
   policy = jsonencode({
     Version = "2012-10-17"
@@ -109,4 +92,12 @@ resource "aws_iam_policy" "ec2_policy" {
       }
     ]
   })
+}
+# Outputs
+output "users" {
+  value = {
+    db_admin = [for user in aws_iam_user.user : user.name if contains(local.db_admin_users, user.name)]
+    monitor  = [for user in aws_iam_user.user : user.name if contains(local.monitor_users, user.name)]
+    sysadmin = [for user in aws_iam_user.user : user.name if contains(local.sysadmin_users, user.name)]
+  }
 }
