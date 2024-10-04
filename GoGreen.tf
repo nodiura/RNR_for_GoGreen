@@ -374,7 +374,7 @@ resource "aws_lb_target_group" "app_tg" {
 }
 # Bastion Host Configuration
 resource "aws_instance" "bastion" {
-  ami             = "ami-047d7c33f6e7b4bc4" # Use a valid AMI ID
+  ami             = "ami-09b2477d43bc5d0ac" 
   instance_type   = "t3.micro"
   subnet_id       = aws_subnet.public[0].id
   security_groups = [aws_security_group.bastion_sg.name]
@@ -510,13 +510,11 @@ resource "aws_lambda_function" "ebs_snapshot_lambda" {
   handler       = "index.handler"
   role          = aws_iam_role.lambda_exec_role.arn
   runtime       = "python3.8"
-  filename      = "path_to_your_lambda_zip_file.zip" # Update with the actual path
+  filename      = "/my_lambda_function/happy_lambda.zip" # Update with the actual path
 
   environment {
     variables = {
-      INSTANCE_ID = aws_instance.b
-
-      INSTANCE_ID = aws_instance.bastion.id
+       INSTANCE_ID = aws_instance.bastion.id
       RETENTION   = 7
     }
   }
