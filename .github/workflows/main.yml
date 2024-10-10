@@ -26,8 +26,7 @@ jobs:
           cli_config_credentials_token: ${{ secrets.TF_LOGIN_TOKEN }}
       
       - name: Run Terraform Init
-        run: terraform init  
-
+        run: terraform init 
       - name: Run Terraform Deployment
         run: terraform ${{ github.event.inputs.action }} -auto-approve -var "public_key_content=${{ secrets.TF_LOGIN_TOKEN }}"
         if: ${{ github.event.inputs.action == 'apply' || github.event.inputs.action == 'destroy' }}
