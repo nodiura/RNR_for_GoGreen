@@ -1,5 +1,4 @@
 
-
 # Variable Declarations
 variable "environment" {
   description = "The environment of the deployment (e.g., dev, stage, prod)"
