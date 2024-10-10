@@ -8,7 +8,7 @@ terraform {
 cloud {
     organization = "Guild_of_Cloud"
     workspaces {
-      name = "GOGREEN"
+      name = "GoGreen2"
     }
   }
 }
@@ -16,6 +16,3 @@ cloud {
 provider "aws" {
   region     = "us-west-1"
 }
-#   access_key = "AKIA3FLDXWVNRDSMWNUH"
-#   secret_key = "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"
-# }
