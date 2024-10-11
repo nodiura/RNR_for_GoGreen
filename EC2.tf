@@ -18,7 +18,7 @@ resource "aws_security_group" "bastion_sg" {
     from_port   = 22
     to_port     = 22
     protocol    = "tcp"
-    cidr_blocks = ["203.0.113.45/32"]
+    cidr_blocks = ["203.0.113.45/32"]  # Replace this with your IP
   }
   egress {
     from_port   = 0
@@ -32,7 +32,7 @@ resource "aws_security_group" "bastion_sg" {
 }
 # Bastion Host Instance
 resource "aws_instance" "bastion" {
-  ami               = "ami-0c55b159cbfafe1f0"
+  ami               = "ami-09b2477d43bc5d0ac"
   instance_type     = "t3.micro"
   subnet_id         = aws_subnet.public[0].id
   security_groups   = [aws_security_group.bastion_sg.id]
@@ -47,7 +47,7 @@ resource "aws_security_group" "web_layer_sg" {
     from_port   = 80
     to_port     = 80
     protocol    = "tcp"
-    cidr_blocks = [aws_instance.bastion.private_ip]  # Allow traffic only from Bastion Host
+    cidr_blocks = ["10.0.0.0/24"]  # Allow HTTP traffic from a specific subnet
   }
   egress {
     from_port   = 0
@@ -62,7 +62,7 @@ resource "aws_security_group" "web_layer_sg" {
 # Launch Configuration for Web Layer Instances
 resource "aws_launch_configuration" "web_layer_lc" {
   name                  = "${var.prefix}-web-layer-lc"
-  image_id              = "ami-0c55b159cbfafe1f0"  # Replace with appropriate Amazon Linux AMI ID
+  image_id              = "ami-09b2477d43bc5d0ac"  # Replace with appropriate Amazon Linux AMI ID
   instance_type         = "t3.micro"
   security_groups       = [aws_security_group.web_layer_sg.id]
   user_data = <<-EOF
@@ -93,7 +93,7 @@ resource "aws_autoscaling_group" "web_layer_asg" {
   min_size             = 1
   vpc_zone_identifier = aws_subnet.public[*].id
   launch_configuration = aws_launch_configuration.web_layer_lc.id
-  target_group_arns = [aws_lb_target_group.main.arn]  # Automatically register instances with the target group
+  target_group_arns    = [aws_lb_target_group.main.arn]  # Automatically register instances with the target group
   tag {
     key                 = "Name"
     value               = "GoGreenWebLayer"
@@ -146,7 +146,7 @@ resource "aws_security_group" "app_layer_sg" {
     from_port                  = 80
     to_port                    = 80
     protocol                   = "tcp"
-    security_groups            = [aws_security_group.web_layer_sg.id]  # Allow traffic from Web Layer
+    cidr_blocks                = ["10.0.0.0/24"]  # Allow traffic from a specific subnet, adjust as needed
   }
   egress {
     from_port   = 0
@@ -158,10 +158,10 @@ resource "aws_security_group" "app_layer_sg" {
     Name = "GoGreenAppLayerSG"
   }
 }
-# Launch Configuration for Application Layer Instances
+# Launch Configuration for Application Layer
 resource "aws_launch_configuration" "app_layer_lc" {
   name                  = "${var.prefix}-app-layer-lc"
-  image_id              = "ami-0c55b159cbfafe1f0"  # Replace with appropriate Amazon Linux AMI ID
+  image_id              = "ami-09b2477d43bc5d0ac"  # Replace with appropriate Amazon Linux AMI ID
   instance_type         = "t3.micro"
   security_groups       = [aws_security_group.app_layer_sg.id]
   lifecycle {
@@ -188,7 +188,7 @@ resource "aws_security_group" "db_sg" {
     from_port                  = 3306  # MySQL
     to_port                    = 3306
     protocol                   = "tcp"
-    security_groups            = [aws_security_group.app_layer_sg.id]  # Allow traffic from App Layer
+    cidr_blocks                = ["10.0.0.0/24"]  # Allow traffic from specific subnets
   }
   egress {
     from_port   = 0
@@ -205,7 +205,7 @@ resource "aws_db_instance" "default" {
   identifier                = "go-green-db"
   engine                    = "mysql"
   engine_version            = "8.0"
-  instance_class            = "t3.micro"
+  instance_class            = "db.t3.small"
   allocated_storage          = 100
   storage_type              = "gp2"
   username                  = "admin"
@@ -221,5 +221,28 @@ resource "aws_db_instance" "default" {
   tags = {
     Name        = "GoGreenDBInstance"
     Environment = var.environment
+  }
+}
+# Elastic IP for Each Instance
+resource "aws_eip" "web_instance_ip" {
+  count   = var.desired_web_instances
+  domain  = "vpc"
+}
+
+# EIP Association for EC2 instances launched in Auto Scaling Group
+resource "aws_eip_association" "web_instance_eip_association" {
+  count         = var.desired_web_instances
+  instance_id   = element(aws_instance.web.*.id, count.index)
+  allocation_id = aws_eip.web_instance_ip[count.index].id
+}
+# Assuming the `aws_instance` resource is created to track web server instances:
+resource "aws_instance" "web" {
+  count             = var.desired_web_instances
+  ami               = aws_launch_configuration.web_layer_lc.image_id
+  instance_type     = aws_launch_configuration.web_layer_lc.instance_type
+  subnet_id         = aws_subnet.public[count.index].id
+  security_groups   = [aws_security_group.web_layer_sg.id]
+  tags = {
+    Name = "${var.prefix}-web-instance-${count.index + 1}"
   }
 }
