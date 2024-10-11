@@ -11,7 +11,7 @@ module "security_gr" {
         {
           to_port     = 22
           from_port   = 22
-          cidr_blocks = ["0.0.0.0/0"]
+          cidr_blocks = ["54.0.0.0/16"]
           protocol    = "tcp"
           description = "SSH ingress rule"
         },
@@ -25,7 +25,7 @@ module "security_gr" {
         {
           to_port     = 443
           from_port   = 443
-          cidr_blocks = ["0.0.0.0/0"]
+          cidr_blocks = ["54.0.0.0/16"]
           protocol    = "tcp"
           description = "HTTPS ingress rule"
         }
@@ -50,14 +50,14 @@ resource "aws_security_group" "alb_sg" {
     from_port   = 80
     to_port     = 80
     protocol    = "tcp"
-    cidr_blocks = ["0.0.0.0/0"]
+    cidr_blocks = ["54.0.0.0/16"]
   }
 
   ingress {
     from_port   = 443
     to_port     = 443
     protocol    = "tcp"
-    cidr_blocks = ["0.0.0.0/0"]
+    cidr_blocks = ["54.0.0.0/16"]
   }
 
   egress {

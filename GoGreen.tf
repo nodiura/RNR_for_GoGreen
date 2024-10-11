@@ -120,7 +120,7 @@ resource "aws_lb_target_group" "app_tg" {
 }
 # Route 53 Configuration
 resource "aws_route53_zone" "main" {
-  name = "yourdomain.com" # Change to your domain
+  name = "GuildofCloud.com" # Change to your domain
 }
 resource "aws_route53_record" "alb" {
   zone_id = aws_route53_zone.main.id
@@ -244,7 +244,7 @@ resource "aws_sns_topic" "critical_alerts" {
 resource "aws_sns_topic_subscription" "critical_alerts_email" {
   topic_arn = aws_sns_topic.critical_alerts.arn
   protocol  = "email"
-  endpoint  = "nodira8989@gmail.com" 
+  endpoint  = "damirxon27@gmail.com" 
 }
 # CloudWatch Alarms
 ## High CPU Alarm for EC2
